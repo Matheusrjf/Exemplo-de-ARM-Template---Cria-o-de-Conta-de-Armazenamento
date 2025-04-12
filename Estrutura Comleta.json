@@ -1,0 +1,201 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "location": {
+        "type": "string",
+        "defaultValue": "eastus"
+      },
+      "adminUsername": {
+        "type": "string",
+        "defaultValue": "azureuser"
+      },
+      "adminPassword": {
+        "type": "securestring"
+      }
+    },
+    "resources": [
+      {
+        "type": "Microsoft.Network/virtualNetworks",
+        "apiVersion": "2022-01-01",
+        "name": "vnet-principal",
+        "location": "[parameters('location')]",
+        "properties": {
+          "addressSpace": {
+            "addressPrefixes": ["10.0.0.0/16"]
+          },
+          "subnets": [
+            {
+              "name": "subnet-principal",
+              "properties": {
+                "addressPrefix": "10.0.0.0/24"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "Microsoft.Storage/storageAccounts",
+        "apiVersion": "2022-09-01",
+        "name": "armstorageconta01",
+        "location": "[parameters('location')]",
+        "sku": {
+          "name": "Standard_LRS"
+        },
+        "kind": "StorageV2",
+        "properties": {
+          "accessTier": "Hot"
+        }
+      },
+      {
+        "type": "Microsoft.Compute/virtualMachines",
+        "apiVersion": "2022-08-01",
+        "name": "vm-linux",
+        "location": "[parameters('location')]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Network/virtualNetworks', 'vnet-principal')]"
+        ],
+        "properties": {
+          "hardwareProfile": {
+            "vmSize": "Standard_B1s"
+          },
+          "osProfile": {
+            "computerName": "vmlinux",
+            "adminUsername": "[parameters('adminUsername')]",
+            "adminPassword": "[parameters('adminPassword')]"
+          },
+          "storageProfile": {
+            "imageReference": {
+              "publisher": "Canonical",
+              "offer": "UbuntuServer",
+              "sku": "18.04-LTS",
+              "version": "latest"
+            },
+            "osDisk": {
+              "createOption": "FromImage"
+            }
+          },
+          "networkProfile": {
+            "networkInterfaces": [
+              {
+                "id": "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Network/networkInterfaces/vmLinuxNIC"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "Microsoft.Web/serverfarms",
+        "apiVersion": "2022-03-01",
+        "name": "planoweb",
+        "location": "[parameters('location')]",
+        "sku": {
+          "name": "F1",
+          "tier": "Free"
+        },
+        "properties": {}
+      },
+      {
+        "type": "Microsoft.Web/sites",
+        "apiVersion": "2022-03-01",
+        "name": "meuwebapp2025",
+        "location": "[parameters('location')]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Web/serverfarms', 'planoweb')]"
+        ],
+        "properties": {
+          "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', 'planoweb')]"
+        }
+      },
+      {
+        "type": "Microsoft.Sql/servers",
+        "apiVersion": "2022-05-01-preview",
+        "name": "sqlserver2025",
+        "location": "[parameters('location')]",
+        "properties": {
+          "administratorLogin": "sqladmin",
+          "administratorLoginPassword": "[parameters('adminPassword')]"
+        }
+      },
+      {
+        "type": "Microsoft.Sql/servers/databases",
+        "apiVersion": "2022-05-01-preview",
+        "name": "sqlserver2025/minhabasededados",
+        "location": "[parameters('location')]",
+        "dependsOn": [
+          "[resourceId('Microsoft.Sql/servers', 'sqlserver2025')]"
+        ],
+        "properties": {
+          "readScale": "Disabled"
+        }
+      },
+      {
+        "type": "Microsoft.Web/sites",
+        "apiVersion": "2022-03-01",
+        "name": "funcaoarm2025",
+        "location": "[parameters('location')]",
+        "kind": "functionapp",
+        "dependsOn": [
+          "[resourceId('Microsoft.Storage/storageAccounts', 'armstorageconta01')]",
+          "[resourceId('Microsoft.Web/serverfarms', 'planoweb')]"
+        ],
+        "properties": {
+          "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', 'planoweb')]",
+          "siteConfig": {
+            "appSettings": [
+              {
+                "name": "AzureWebJobsStorage",
+                "value": "[concat('DefaultEndpointsProtocol=https;AccountName=armstorageconta01;AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', 'armstorageconta01'), '2022-09-01').keys[0].value, ';EndpointSuffix=core.windows.net')]"
+              },
+              {
+                "name": "FUNCTIONS_EXTENSION_VERSION",
+                "value": "~4"
+              },
+              {
+                "name": "FUNCTIONS_WORKER_RUNTIME",
+                "value": "dotnet"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "Microsoft.ContainerInstance/containerGroups",
+        "apiVersion": "2023-05-01",
+        "name": "meucontainer2025",
+        "location": "[parameters('location')]",
+        "properties": {
+          "containers": [
+            {
+              "name": "appcontainer",
+              "properties": {
+                "image": "mcr.microsoft.com/azuredocs/aci-helloworld",
+                "resources": {
+                  "requests": {
+                    "cpu": 1,
+                    "memoryInGb": 1.5
+                  }
+                },
+                "ports": [
+                  {
+                    "port": 80
+                  }
+                ]
+              }
+            }
+          ],
+          "osType": "Linux",
+          "ipAddress": {
+            "type": "Public",
+            "ports": [
+              {
+                "protocol": "tcp",
+                "port": 80
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+  
