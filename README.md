@@ -1,1 +1,1 @@
-# Exemplo-de-ARM-Template---Cria-o-de-Conta-de-Armazenamento
+# Exemplo-de-ARM-Template---Cria-o-de-Conta-de-Armazenamento Azure
